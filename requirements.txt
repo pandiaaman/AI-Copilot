@@ -1,0 +1,11 @@
+langchain
+langchain-community
+openai
+pinecone-client
+langchain-pinecone
+langchain-openai
+python-dotenv
+pypdf
+unstructured[md,pdf,docx,xlsx,pptx,html,csv]>=0.4.16
+tiktoken
+sentence-transformers>=2.2.2
