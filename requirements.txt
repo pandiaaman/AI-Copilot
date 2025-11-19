@@ -1,11 +1,29 @@
+# Core LangChain and AI dependencies
 langchain
 langchain-community
 openai
-pinecone-client
+pinecone
 langchain-pinecone
 langchain-openai
 python-dotenv
+
+# Document processing
 pypdf
 unstructured[md,pdf,docx,xlsx,pptx,html,csv]>=0.4.16
 tiktoken
+
+# ML and embedding models
 sentence-transformers>=2.2.2
+scikit-learn
+numpy
+
+# Web framework
+fastapi
+uvicorn[standard]
+pydantic
+
+# Caching (optional but recommended)
+redis
+
+# Additional utilities for enhanced features
+python-multipart

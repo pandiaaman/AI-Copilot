@@ -89,6 +89,7 @@ if __name__ == "__main__":
 
     # Example queries
     queries = [
+        "Tell me about unicorns",
         "What are the various functionalities provided by these API postman collections?",
         "What are the various API endpoints provided by MediaCentral CTMS Registry?",
         "How can I get started with these postman collections?",
