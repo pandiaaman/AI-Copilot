@@ -12,18 +12,18 @@ if ($jobs) {
     Write-Host "No background jobs found" -ForegroundColor Yellow
 }
 
-# Kill any remaining processes on ports 8000 and 3000
-Write-Host "Checking for processes on ports 8000 and 3000..." -ForegroundColor Yellow
+# Kill any remaining processes on ports 8080 and 3000
+Write-Host "Checking for processes on ports 8080 and 3000..." -ForegroundColor Yellow
 
 # For Windows
 if ($IsWindows -or $env:OS -eq "Windows_NT") {
     try {
-        $proc8000 = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
-            (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue).OwningProcess -contains $_.Id
+        $proc8080 = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
+            (Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue).OwningProcess -contains $_.Id
         }
-        if ($proc8000) {
-            $proc8000 | Stop-Process -Force
-            Write-Host "✅ Stopped FastAPI process on port 8000" -ForegroundColor Green
+        if ($proc8080) {
+            $proc8080 | Stop-Process -Force
+            Write-Host "✅ Stopped FastAPI process on port 8080" -ForegroundColor Green
         }
     } catch {}
     
@@ -39,10 +39,10 @@ if ($IsWindows -or $env:OS -eq "Windows_NT") {
 } else {
     # For macOS/Linux
     try {
-        $proc8000 = lsof -ti:8000 2>/dev/null
-        if ($proc8000) {
-            kill -9 $proc8000
-            Write-Host "✅ Stopped process on port 8000" -ForegroundColor Green
+        $proc8080 = lsof -ti:8080 2>/dev/null
+        if ($proc8080) {
+            kill -9 $proc8080
+            Write-Host "✅ Stopped process on port 8080" -ForegroundColor Green
         }
     } catch {}
     

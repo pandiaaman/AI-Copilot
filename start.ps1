@@ -11,15 +11,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Color functions for better output
-function Write-Success { param($Message) Write-Host "✅ $Message" -ForegroundColor Green }
-function Write-Info { param($Message) Write-Host "ℹ️  $Message" -ForegroundColor Cyan }
-function Write-Warning { param($Message) Write-Host "⚠️  $Message" -ForegroundColor Yellow }
-function Write-Error { param($Message) Write-Host "❌ $Message" -ForegroundColor Red }
-function Write-Step { param($Message) Write-Host "🔧 $Message" -ForegroundColor Magenta }
+function Write-Success { param($Message) Write-Host "[SUCCESS] $Message" -ForegroundColor Green }
+function Write-Info { param($Message) Write-Host "[INFO] $Message" -ForegroundColor Cyan }
+function Write-Warn { param($Message) Write-Host "[WARNING] $Message" -ForegroundColor Yellow }
+function Write-Err { param($Message) Write-Host "[ERROR] $Message" -ForegroundColor Red }
+function Write-Step { param($Message) Write-Host "[STEP] $Message" -ForegroundColor Magenta }
 
 # Header
 Clear-Host
-Write-Host "🚀 MediaCentral CTMS Chatbot Startup Script" -ForegroundColor Blue
+Write-Host "[STARTUP] MediaCentral CTMS Chatbot Startup Script" -ForegroundColor Blue
 Write-Host "=" * 50 -ForegroundColor Blue
 Write-Host ""
 
@@ -35,7 +35,7 @@ try {
 
     # Check if .env file exists
     if (-not (Test-Path ".env")) {
-        Write-Error ".env file not found! Please ensure .env file exists in the root directory."
+        Write-Err ".env file not found! Please ensure .env file exists in the root directory."
         exit 1
     }
     Write-Success ".env file found"
@@ -44,31 +44,40 @@ try {
     Write-Step "Setting up Python virtual environment..."
     
     # Clean start if requested
-    if ($CleanStart -and (Test-Path "venv")) {
+    if ($CleanStart -and (Test-Path ".venv")) {
         Write-Info "Removing existing virtual environment..."
-        Remove-Item -Path "venv" -Recurse -Force
+        Remove-Item -Path ".venv" -Recurse -Force
     }
 
     # Check if Python is available
+    $pythonCmd = $null
     try {
-        $pythonVersion = python3 --version 2>$null
-        if (-not $pythonVersion) {
-            $pythonVersion = python --version 2>$null
+        $pythonVersion = python --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
             $pythonCmd = "python"
-        } else {
-            $pythonCmd = "python3"
         }
-        Write-Success "Found Python: $pythonVersion"
+    } catch {}
+    
+    if (-not $pythonCmd) {
+        try {
+            $pythonVersion = python3 --version 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $pythonCmd = "python3"
+            }
+        } catch {}
     }
-    catch {
-        Write-Error "Python not found! Please install Python 3.8 or higher."
+    
+    if (-not $pythonCmd) {
+        Write-Err "Python not found! Please install Python 3.8 or higher."
         exit 1
     }
+    
+    Write-Success "Found Python: $pythonVersion"
 
     # Create virtual environment if it doesn't exist
-    if (-not (Test-Path "venv")) {
+    if (-not (Test-Path ".venv")) {
         Write-Step "Creating virtual environment..."
-        & $pythonCmd -m venv venv
+        & $pythonCmd -m venv .venv
         Write-Success "Virtual environment created"
     } else {
         Write-Info "Virtual environment already exists"
@@ -77,16 +86,16 @@ try {
     # Activate virtual environment
     Write-Step "Activating virtual environment..."
     if ($IsWindows -or $env:OS -eq "Windows_NT") {
-        $activateScript = "venv\Scripts\Activate.ps1"
+        $activateScript = ".venv\Scripts\Activate.ps1"
         if (Test-Path $activateScript) {
             & $activateScript
         } else {
-            Write-Warning "PowerShell activation script not found, using batch file..."
-            & "venv\Scripts\activate.bat"
+            Write-Warn "PowerShell activation script not found, using batch file..."
+            & ".venv\Scripts\activate.bat"
         }
     } else {
         # macOS/Linux
-        $env:VIRTUAL_ENV = Join-Path $ScriptDir "venv"
+        $env:VIRTUAL_ENV = Join-Path $ScriptDir ".venv"
         $env:PATH = Join-Path $env:VIRTUAL_ENV "bin" + [IO.Path]::PathSeparator + $env:PATH
     }
     Write-Success "Virtual environment activated"
@@ -105,7 +114,7 @@ try {
             python -m pip install -r requirements.txt
             Write-Success "Python dependencies installed"
         } else {
-            Write-Warning "requirements.txt not found, installing core dependencies..."
+            Write-Warn "requirements.txt not found, installing core dependencies..."
             python -m pip install fastapi uvicorn langchain langchain-openai langchain-pinecone pinecone redis sentence-transformers scikit-learn python-dotenv
         }
     } else {
@@ -120,7 +129,7 @@ try {
         Write-Success "Found Node.js: $nodeVersion, npm: $npmVersion"
     }
     catch {
-        Write-Error "Node.js not found! Please install Node.js 16 or higher."
+        Write-Err "Node.js not found! Please install Node.js 16 or higher."
         exit 1
     }
 
@@ -138,7 +147,7 @@ try {
         
         Set-Location $ScriptDir
     } else {
-        Write-Warning "React frontend directory not found at: $frontendDir"
+        Write-Warn "React frontend directory not found at: $frontendDir"
     }
 
     # Step 5: Start services
@@ -151,6 +160,9 @@ try {
 
     Write-Info "Starting FastAPI backend..."
     
+    # Get the Python executable path from venv
+    $venvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+    
     # Start FastAPI backend in background
     $fastApiPath = "fastapi app"
     if (Test-Path $fastApiPath) {
@@ -158,12 +170,12 @@ try {
             param($WorkingDir, $FastApiPath, $PythonPath)
             Set-Location $WorkingDir
             Set-Location $FastApiPath
-            & $PythonPath -m uvicorn app-improved:app --reload --host 0.0.0.0 --port 8000
-        } -ArgumentList $ScriptDir, $fastApiPath, (Get-Command python).Source
+            & $PythonPath -m uvicorn app-improved:app --reload --host 0.0.0.0 --port 8080
+        } -ArgumentList $ScriptDir, $fastApiPath, $venvPython
         
         Write-Success "FastAPI backend starting... (Job ID: $($backendJob.Id))"
     } else {
-        Write-Error "FastAPI app directory not found!"
+        Write-Err "FastAPI app directory not found!"
         exit 1
     }
 
@@ -193,12 +205,12 @@ try {
     
     # Check FastAPI
     try {
-        $response = Invoke-RestMethod -Uri "http://localhost:8000/health" -TimeoutSec 5 -ErrorAction Stop
-        Write-Success "FastAPI backend is running at http://localhost:8000"
-        Write-Success "API Documentation available at http://localhost:8000/docs"
+        $response = Invoke-RestMethod -Uri "http://localhost:8080/health" -TimeoutSec 5 -ErrorAction Stop
+        Write-Success "FastAPI backend is running at http://localhost:8080"
+        Write-Success "API Documentation available at http://localhost:8080/docs"
     }
     catch {
-        Write-Warning "FastAPI backend may still be starting..."
+        Write-Warn "FastAPI backend may still be starting..."
     }
 
     # Check React (it takes longer to start)
@@ -208,23 +220,23 @@ try {
         Write-Success "React frontend is running at http://localhost:3000"
     }
     catch {
-        Write-Warning "React frontend may still be starting..."
+        Write-Warn "React frontend may still be starting..."
     }
 
     # Final status
     Write-Host ""
-    Write-Host "🎉 Application Startup Complete!" -ForegroundColor Green
+    Write-Host "[SUCCESS] Application Startup Complete!" -ForegroundColor Green
     Write-Host "=" * 40 -ForegroundColor Green
-    Write-Success "Backend API: http://localhost:8000"
+    Write-Success "Backend API: http://localhost:8080"
     Write-Success "Frontend UI: http://localhost:3000"
-    Write-Success "API Docs: http://localhost:8000/docs"
+    Write-Success "API Docs: http://localhost:8080/docs"
     Write-Host ""
     Write-Info "Backend Job ID: $($backendJob.Id)"
     if ($frontendJob) {
         Write-Info "Frontend Job ID: $($frontendJob.Id)"
     }
     Write-Host ""
-    Write-Warning "To stop services, run: .\stop.ps1"
+    Write-Warn "To stop services, run: .\stop.ps1"
     Write-Host ""
 
     # Optional: Open browser
@@ -243,7 +255,7 @@ try {
                 # Check job status
                 $runningJobs = Get-Job | Where-Object { $_.State -eq "Running" }
                 if ($runningJobs.Count -eq 0) {
-                    Write-Warning "All services have stopped."
+                    Write-Warn "All services have stopped."
                     break
                 }
                 
@@ -264,7 +276,7 @@ try {
 
 }
 catch {
-    Write-Error "An error occurred: $($_.Exception.Message)"
+    Write-Err "An error occurred: $($_.Exception.Message)"
     Write-Host $_.ScriptStackTrace -ForegroundColor Red
     exit 1
 }

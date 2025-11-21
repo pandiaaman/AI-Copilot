@@ -5,22 +5,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import List, Optional
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import ConversationalRetrievalChain
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_pinecone import PineconeVectorStore
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 # 🔹 New imports for reranking
-from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
+from langchain_classic.retrievers import ContextualCompressionRetriever
 from sentence_transformers import CrossEncoder
 
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
-from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler
+# from langchain_core.callbacks import AsyncIteratorCallbackHandler
 import asyncio
 
 warnings.filterwarnings("ignore")
@@ -72,7 +71,7 @@ prompt = PromptTemplate(input_variables=["summaries", "question"], template=prom
 # Embeddings + VectorStore
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small",
-    openai_api_key=os.environ["OPENAI_API_KEY"]
+    api_key=os.environ["OPENAI_API_KEY"]
 )
 vectorstore = PineconeVectorStore(
     index_name=os.environ["INDEX_NAME_ALL_TYPES"],
@@ -83,8 +82,8 @@ vectorstore = PineconeVectorStore(
 chat = ChatOpenAI(
     verbose=True,
     temperature=0.4,
-    model_name="gpt-3.5-turbo",
-    openai_api_key=os.environ["OPENAI_API_KEY"]
+    model="gpt-3.5-turbo",
+    api_key=os.environ["OPENAI_API_KEY"]
 )
 
 # Normal retriever
@@ -120,26 +119,43 @@ class QueryRequest(BaseModel):
     question: str
     max_history: Optional[int] = 10
 
+# Document model for response
+class SourceDocument(BaseModel):
+    page_content: str
+    metadata: dict
+
 # Response model
 class QueryResponse(BaseModel):
     answer: str
     sources: List[str] = []
+    source_documents: List[SourceDocument] = []
+
+# ----------------------
+# Health Check Endpoint
+# ----------------------
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "message": "MediaCentral CTMS Chatbot API is running"}
 
 # ----------------------
 # Normal Query Endpoint
 # ----------------------
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query")
 def query_bot(req: QueryRequest):
     global chat_history
     res = qa_chain({"question": req.question, "chat_history": chat_history})
     answer = res["answer"]
     sources = [doc.metadata.get("source", "Unknown") for doc in res.get("source_documents", [])]
+    source_documents = [
+        SourceDocument(page_content=doc.page_content, metadata=doc.metadata)
+        for doc in res.get("source_documents", [])
+    ]
 
     chat_history.append((req.question, answer))
     if len(chat_history) > req.max_history:
         chat_history = chat_history[-req.max_history:]
     
-    return QueryResponse(answer=answer, sources=sources)
+    return QueryResponse(answer=answer, sources=sources, source_documents=source_documents)
 
 # ----------------------
 # Reranked Query Endpoint
@@ -240,63 +256,64 @@ def query_bot_dynamic(req: QueryRequest):
 # Dynamic Query Endpoint With Streaming answers
 # Auto detects broad and narrow queries
 # ----------------------
-@app.post("/query-dynamic-streaming")
-async def query_bot_dynamic_stream(req: QueryRequest, request: Request):
-    global chat_history
+# TEMPORARILY DISABLED - AsyncIteratorCallbackHandler import issue
+# @app.post("/query-dynamic-streaming")
+# async def query_bot_dynamic_stream(req: QueryRequest, request: Request):
+#     global chat_history
 
-    # Decide chain type (broad vs narrow)
-    if is_broad_question(req.question):
-        print("🔎 Broad query detected → Using NORMAL retriever (no rerank)")
-        retriever_chain = qa_chain
-    else:
-        print("🎯 Narrow query detected → Using RERANKED retriever")
-        retriever_chain = qa_chain_reranked
+#     # Decide chain type (broad vs narrow)
+#     if is_broad_question(req.question):
+#         print("🔎 Broad query detected → Using NORMAL retriever (no rerank)")
+#         retriever_chain = qa_chain
+#     else:
+#         print("🎯 Narrow query detected → Using RERANKED retriever")
+#         retriever_chain = qa_chain_reranked
 
-    # Create a callback handler to stream tokens
-    callback = AsyncIteratorCallbackHandler()
-    stream_chat = ChatOpenAI(
-        verbose=True,
-        temperature=0.4,
-        model_name="gpt-3.5-turbo",
-        openai_api_key=os.environ["OPENAI_API_KEY"],
-        streaming=True,
-        callbacks=[callback]
-    )
+#     # Create a callback handler to stream tokens
+#     callback = AsyncIteratorCallbackHandler()
+#     stream_chat = ChatOpenAI(
+#         verbose=True,
+#         temperature=0.4,
+#         model="gpt-3.5-turbo",
+#         api_key=os.environ["OPENAI_API_KEY"],
+#         streaming=True,
+#         callbacks=[callback]
+#     )
 
-    # Recreate chain with streaming LLM
-    stream_chain = ConversationalRetrievalChain.from_llm(
-        llm=stream_chat,
-        retriever=retriever_chain.retriever,
-        return_source_documents=True,
-        chain_type="map_reduce",
-        combine_docs_chain_kwargs={"combine_prompt": prompt}
-    )
+#     # Recreate chain with streaming LLM
+#     stream_chain = ConversationalRetrievalChain.from_llm(
+#         llm=stream_chat,
+#         retriever=retriever_chain.retriever,
+#         return_source_documents=True,
+#         chain_type="map_reduce",
+#         combine_docs_chain_kwargs={"combine_prompt": prompt}
+#     )
 
-    async def token_streamer():
-        """Generator that streams tokens as they are produced"""
-        chat_history = []
+#     async def token_streamer():
+#         """Generator that streams tokens as they are produced"""
+#         chat_history = []
 
-        task = asyncio.create_task(
-            stream_chain.acall({"question": req.question, "chat_history": chat_history})
-        )
-        async for token in callback.aiter():
-            # Stop streaming if client disconnects
-            if await request.is_disconnected():
-                task.cancel()
-                break
-            yield token
-        res = await task
-        # Final metadata (sources) at end of stream
-        sources = [doc.metadata.get("source", "Unknown") for doc in res.get("source_documents", [])]
-        yield f"\n\nSources: {', '.join(sources)}"
+#         task = asyncio.create_task(
+#             stream_chain.acall({"question": req.question, "chat_history": chat_history})
+#         )
+#         async for token in callback.aiter():
+#             # Stop streaming if client disconnects
+#             if await request.is_disconnected():
+#                 task.cancel()
+#                 break
+#             yield token
+#         res = await task
+#         # Final metadata (sources) at end of stream
+#         sources = [doc.metadata.get("source", "Unknown") for doc in res.get("source_documents", [])]
+#         yield f"\n\nSources: {', '.join(sources)}"
 
-        # Update chat history
-        answer = res["answer"]
-        chat_history.append((req.question, answer))
-        if len(chat_history) > req.max_history:
-            chat_history = chat_history[-req.max_history:]
+#         # Update chat history
+#         answer = res["answer"]
+#         chat_history.append((req.question, answer))
+#         if len(chat_history) > req.max_history:
+#             chat_history = chat_history[-req.max_history:]
 
-    return StreamingResponse(token_streamer(), media_type="text/plain")
+#     return StreamingResponse(token_streamer(), media_type="text/plain")
 
 
 # TODO: Check if this is right later

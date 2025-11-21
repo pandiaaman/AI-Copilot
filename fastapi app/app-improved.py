@@ -17,17 +17,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 # LangChain imports
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.chat_models import ChatOpenAI
-from langchain.chains import ConversationalRetrievalChain
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_classic.chains import ConversationalRetrievalChain
 from langchain_pinecone import PineconeVectorStore
-from langchain.prompts import PromptTemplate
-from langchain.schema import Document
-from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler
+from langchain_core.prompts import PromptTemplate
+from langchain_core.documents import Document
+# from langchain.callbacks.streaming_aiter import AsyncIteratorCallbackHandler
 
 # Reranking imports
-from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
+from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
 # Query classification imports
@@ -588,7 +587,7 @@ query_classifier = QueryClassifier()
 # Setup embeddings (using the new large model)
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-large",
-    openai_api_key=os.environ["OPENAI_API_KEY"],
+    api_key=os.environ["OPENAI_API_KEY"],
     dimensions=1024
 )
 
@@ -706,8 +705,8 @@ def query_bot_enhanced(req: QueryRequest):
             verbose=False,
             temperature=response_config["temperature"],
             max_tokens=response_config["max_tokens"],
-            model_name="gpt-3.5-turbo",
-            openai_api_key=os.environ["OPENAI_API_KEY"]
+            model="gpt-3.5-turbo",
+            api_key=os.environ["OPENAI_API_KEY"]
         )
         
         # Create chain
@@ -804,8 +803,8 @@ async def query_bot_streaming_enhanced(req: QueryRequest, request: Request):
         stream_chat = ChatOpenAI(
             verbose=False,
             temperature=response_config["temperature"],
-            model_name="gpt-3.5-turbo",
-            openai_api_key=os.environ["OPENAI_API_KEY"],
+            model="gpt-3.5-turbo",
+            api_key=os.environ["OPENAI_API_KEY"],
             streaming=True,
             callbacks=[callback]
         )
@@ -883,8 +882,8 @@ def query_bot(req: QueryRequest):
     chat = ChatOpenAI(
         verbose=True,
         temperature=0.4,
-        model_name="gpt-3.5-turbo",
-        openai_api_key=os.environ["OPENAI_API_KEY"]
+        model="gpt-3.5-turbo",
+        api_key=os.environ["OPENAI_API_KEY"]
     )
     
     prompt = PromptTemplate(
@@ -918,8 +917,8 @@ def query_bot_reranked(req: QueryRequest):
     chat = ChatOpenAI(
         verbose=True,
         temperature=0.4,
-        model_name="gpt-3.5-turbo",
-        openai_api_key=os.environ["OPENAI_API_KEY"]
+        model="gpt-3.5-turbo",
+        api_key=os.environ["OPENAI_API_KEY"]
     )
     
     prompt = PromptTemplate(
@@ -953,8 +952,8 @@ def query_bot_dynamic(req: QueryRequest):
     chat = ChatOpenAI(
         verbose=True,
         temperature=0.4,
-        model_name="gpt-3.5-turbo",
-        openai_api_key=os.environ["OPENAI_API_KEY"]
+        model="gpt-3.5-turbo",
+        api_key=os.environ["OPENAI_API_KEY"]
     )
     
     prompt = PromptTemplate(
